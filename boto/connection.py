@@ -84,6 +84,20 @@ try:
 except ImportError:
     import dummy_threading as threading
 
+try:
+    from cl.utils.easy_request import EasyRequest
+    import tornado
+except ImportError:
+    EasyRequest = None
+    tornado = None
+    print "Warning: easy_request not found, using default Boto behavior"
+
+try:
+    from cl.utils.tornadoutil.async import async_sleep
+except ImportError:
+    async_sleep = None
+    print "Warning: async_sleep not found, will not retry on status code > 500"
+
 ON_APP_ENGINE = all(key in os.environ for key in (
     'USER_IS_ADMIN', 'CURRENT_VERSION_ID', 'APPLICATION_ID'))
 
@@ -92,6 +106,8 @@ PORTS_BY_SECURITY = {True: 443,
 
 DEFAULT_CA_CERTS_FILE = os.path.join(os.path.dirname(os.path.abspath(boto.cacerts.__file__)), "cacerts.txt")
 
+class EasyRequestNotFoundException(Exception):
+    pass
 
 class HostConnectionPool(object):
 
@@ -383,6 +399,10 @@ class HTTPRequest(object):
                     self.headers['Transfer-Encoding'] != 'chunked':
                 self.headers['Content-Length'] = str(len(self.body))
 
+    @property
+    def url(self):
+        return "%s://%s:%d%s" % (self.protocol, self.host, self.port, self.path)
+
 
 class HTTPResponse(http_client.HTTPResponse):
 
@@ -411,6 +431,29 @@ class HTTPResponse(http_client.HTTPResponse):
             return self._cached_response
         else:
             return http_client.HTTPResponse.read(self, amt)
+
+class CLHTTPResponse(object):
+    '''
+        Maps tornado HTTPResponse to boto's version
+    '''
+    def __init__(self, response):
+        self._cache_response = ''
+        self._response = response
+
+    def read(self, amt=None):
+        return self._response.body
+
+    @property
+    def status(self):
+        return self._response.code
+
+    def getheader(self, header):
+        return self._response.headers.get(header)
+
+    @property
+    def reason(self):
+        # there's no equivalent field, this is closest
+        return self._response.error
 
 
 class AWSAuthConnection(object):
@@ -472,7 +515,7 @@ class AWSAuthConnection(object):
             file to use a named set of keys instead.
         """
         self.suppress_consec_slashes = suppress_consec_slashes
-        self.num_retries = 6
+        self.num_retries = 3
         # Override passed-in is_secure setting if value was defined in config.
         if config.has_option('Boto', 'is_secure'):
             is_secure = config.getboolean('Boto', 'is_secure')
@@ -540,8 +583,10 @@ class AWSAuthConnection(object):
             # If timeout isn't defined in boto config file, use 70 second
             # default as recommended by
             # http://docs.aws.amazon.com/amazonswf/latest/apireference/API_PollForActivityTask.html
+            # Very few things will use this default behavior, but to be safe we can lower
+            # it to 10
             self.http_connection_kwargs['timeout'] = config.getint(
-                'Boto', 'http_socket_timeout', 70)
+                'Boto', 'http_socket_timeout', 10)
 
         if isinstance(provider, Provider):
             # Allow overriding Provider
@@ -883,8 +928,114 @@ class AWSAuthConnection(object):
     def set_request_hook(self, hook):
         self.request_hook = hook
 
+    def _cl_mexe(self, request, sender=None, override_num_retries=None,
+                 retry_handler=None, override_timeout=None):
+        """
+        mexe - Copy of mexe but with async support and no connection pools
+
+        """
+        if EasyRequest is None:
+            raise EasyRequestNotFoundException(
+                'Cannot use _cl_mexe without easy_request')
+
+        boto.log.debug('Method: %s' % request.method)
+        boto.log.debug('Path: %s' % request.path)
+        boto.log.debug('Data: %s' % request.body)
+        boto.log.debug('Headers: %s' % request.headers)
+        boto.log.debug('Host: %s' % request.host)
+        boto.log.debug('Port: %s' % request.port)
+        boto.log.debug('Params: %s' % request.params)
+        response = None
+        body = None
+        ex = None
+        if override_num_retries is None:
+            num_retries = config.getint('Boto', 'num_retries', self.num_retries)
+        else:
+            num_retries = override_num_retries
+        i = 0
+
+        # Convert body to bytes if needed
+        if not isinstance(request.body, bytes) and hasattr(request.body,
+                                                           'encode'):
+            request.body = request.body.encode('utf-8')
+
+        while i <= num_retries:
+            # Use exponential backoff with 10% jitter to desynchronize
+            # client requests.
+            next_sleep = min(random.uniform(0.9,1.1) * (1.5 ** i),
+                             boto.config.get('Boto', 'max_retry_delay', 10))
+            # we now re-sign each request before it is retried
+            boto.log.debug('Token: %s' % self.provider.security_token)
+            request.authorize(connection=self)
+            # Only force header for non-s3 connections, because s3 uses
+            # an older signing method + bucket resource URLs that include
+            # the port info. All others should be now be up to date and
+            # not include the port.
+            if 's3' not in self._required_auth_capability():
+                if not getattr(self, 'anon', False):
+                    if not request.headers.get('Host'):
+                        self.set_host_header(request)
+            boto.log.debug('Final headers: %s' % request.headers)
+            request.start_time = datetime.now()
+            try:
+                response = EasyRequest.request(request.method, request.url,
+                                   body=request.body, headers=request.headers,
+                                   request_timeout=2 if override_timeout is None else \
+                                       override_timeout)
+
+                boto.log.debug('Response headers: %s' % response.headers)
+                location = response.headers.get('Location',None)
+
+                if response.code < 300  or not location:
+                    return CLHTTPResponse(response)
+                else:
+                    scheme, request.host, request.path, \
+                        params, query, fragment = urlparse(location)
+                    if query:
+                        request.path += '?' + query
+                    # urlparse can return both host and port in netloc, so if
+                    # that's the case we need to split them up properly
+                    if ':' in request.host:
+                        request.host, request.port = request.host.split(':', 1)
+                    msg = 'Redirecting: %s' % scheme + '://'
+                    msg += request.host + request.path
+                    boto.log.debug(msg)
+                    response = None
+                    continue
+            except tornado.httpclient.HTTPError as e:
+                ex = e
+                if e.code in [500, 502, 503, 504, 599]:
+                    msg = 'Received %d response.  ' % e.code
+                    msg += 'Retrying in %3.1f seconds' % next_sleep
+                    boto.log.debug(msg)
+                    body = None if e.response is None else e.response.body
+                    if isinstance(body, bytes):
+                        body = body.decode('utf-8')
+                elif e.code >= 400:
+                    return CLHTTPResponse(e.response)
+
+            if async_sleep is not None:
+                async_sleep(next_sleep)
+            else:
+                # don't synchrnously sleep. This will fail requests
+                # but SQS API pub/sub will be retried later
+                break
+
+            i += 1
+        # If we made it here, it's because we have exhausted our retries
+        # and stil haven't succeeded.  So, if we have a response object,
+        # use it to raise an exception.
+        # Otherwise, raise the exception that must have already happened.
+        if self.request_hook is not None:
+            self.request_hook.handle_request_data(request, response, error=True)
+        if ex:
+            raise BotoServerError(ex.code, ex.message, body)
+        else:
+            msg = 'Please report this exception as a Boto Issue!'
+            raise BotoClientError(msg)
+
     def _mexe(self, request, sender=None, override_num_retries=None,
-              retry_handler=None):
+              retry_handler=None, async=True, override_timeout=None):
         """
         mexe - Multi-execute inside a loop, retrying multiple times to handle
                transient Internet errors by simply trying again.
@@ -894,6 +1045,19 @@ class AWSAuthConnection(object):
         Google group by Larry Bates.  Thanks!
 
         """
+        # Use async method if we have easy request, if we support the http
+        # method, and if there's no sender/retry function. Only thing that uses
+        # its own custom sender/retry handler are S3, route53, and dynamodb
+        # S3 uses a custom sender for uploading a file, which we expect to block
+        # the other two services we dont use
+        if async and EasyRequest is not None and \
+            EasyRequest.supported_method(request.method) and sender is None \
+            and retry_handler is None:
+            return self._cl_mexe(request, sender=sender,
+                                 override_num_retries=override_num_retries,
+                                 retry_handler=retry_handler,
+                                 override_timeout=override_timeout)
+
         boto.log.debug('Method: %s' % request.method)
         boto.log.debug('Path: %s' % request.path)
         boto.log.debug('Data: %s' % request.body)
@@ -1061,14 +1225,14 @@ class AWSAuthConnection(object):
 
     def make_request(self, method, path, headers=None, data='', host=None,
                      auth_path=None, sender=None, override_num_retries=None,
-                     params=None, retry_handler=None):
+                     params=None, retry_handler=None, async=True):
         """Makes a request to the server, with stock multiple-retry logic."""
         if params is None:
             params = {}
         http_request = self.build_base_http_request(method, path, auth_path,
                                                     params, headers, data, host)
         return self._mexe(http_request, sender, override_num_retries,
-                          retry_handler=retry_handler)
+                          retry_handler=retry_handler, async=async)
 
     def close(self):
         """(Optional) Close any open HTTP connections.  This is non-destructive,
@@ -1105,7 +1269,8 @@ class AWSQueryConnection(AWSAuthConnection):
     def get_utf8_value(self, value):
         return boto.utils.get_utf8_value(value)
 
-    def make_request(self, action, params=None, path='/', verb='GET'):
+    def make_request(self, action, params=None, path='/', verb='GET',
+            override_num_retries=None, override_timeout=None):
         http_request = self.build_base_http_request(verb, path, None,
                                                     params, {}, '',
                                                     self.host)
@@ -1113,7 +1278,9 @@ class AWSQueryConnection(AWSAuthConnection):
             http_request.params['Action'] = action
         if self.APIVersion:
             http_request.params['Version'] = self.APIVersion
-        return self._mexe(http_request)
+        return self._mexe(http_request,
+            override_num_retries=override_num_retries,
+            override_timeout=override_timeout)
 
     def build_list_params(self, params, items, label):
         if isinstance(items, six.string_types):
@@ -1164,10 +1331,11 @@ class AWSQueryConnection(AWSAuthConnection):
     # generics
 
     def get_list(self, action, params, markers, path='/',
-                 parent=None, verb='GET'):
+                 parent=None, verb='GET', override_num_retries=None):
         if not parent:
             parent = self
-        response = self.make_request(action, params, path, verb)
+        response = self.make_request(action, params, path, verb,
+            override_num_retries=override_num_retries)
         body = response.read()
         boto.log.debug(body)
         if not body:
@@ -1186,10 +1354,13 @@ class AWSQueryConnection(AWSAuthConnection):
             raise self.ResponseError(response.status, response.reason, body)
 
     def get_object(self, action, params, cls, path='/',
-                   parent=None, verb='GET'):
+                   parent=None, verb='GET',override_num_retries=None,
+                   override_timeout=None):
         if not parent:
             parent = self
-        response = self.make_request(action, params, path, verb)
+        response = self.make_request(action, params, path, verb,
+            override_num_retries=override_num_retries,
+            override_timeout=override_timeout)
         body = response.read()
         boto.log.debug(body)
         if not body:
@@ -1207,10 +1378,13 @@ class AWSQueryConnection(AWSAuthConnection):
             boto.log.error('%s' % body)
             raise self.ResponseError(response.status, response.reason, body)
 
-    def get_status(self, action, params, path='/', parent=None, verb='GET'):
+    def get_status(self, action, params, path='/', parent=None, verb='GET',
+                   override_num_retries=None, override_timeout=None):
         if not parent:
             parent = self
-        response = self.make_request(action, params, path, verb)
+        response = self.make_request(action, params, path, verb,
+            override_num_retries=override_num_retries,
+            override_timeout=override_timeout)
         body = response.read()
         boto.log.debug(body)
         if not body:
