@@ -332,7 +332,7 @@ class SQSConnection(AWSQueryConnection):
         # don't retry, since we buffer locally
         return self.get_object('SendMessage', params, Message,
                                queue.id, verb='POST', override_num_retries=0,
-                               override_timeout=0.2)
+                               override_timeout=0.5)
 
     def send_message_batch(self, queue, messages):
         """
