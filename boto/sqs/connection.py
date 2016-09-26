@@ -93,7 +93,8 @@ class SQSConnection(AWSQueryConnection):
         if visibility_timeout:
             params['Attribute.1.Name'] = 'VisibilityTimeout'
             params['Attribute.1.Value'] = int(visibility_timeout)
-        return self.get_object('CreateQueue', params, Queue)
+        return self.get_object('CreateQueue', params, Queue,
+            override_timeout=0.5, override_num_retries=0)
 
     def delete_queue(self, queue, force_deletion=False):
         """
@@ -159,7 +160,8 @@ class SQSConnection(AWSQueryConnection):
 
     def set_queue_attribute(self, queue, attribute, value):
         params = {'Attribute.Name' : attribute, 'Attribute.Value' : value}
-        return self.get_status('SetQueueAttributes', params, queue.id)
+        return self.get_status('SetQueueAttributes', params, queue.id,
+             override_timeout=0.5, override_num_retries=0)
 
     def receive_message(self, queue, number_messages=1,
                         visibility_timeout=None, attributes=None,
@@ -328,7 +330,8 @@ class SQSConnection(AWSQueryConnection):
                         attribute['binary_list_value']
 
         return self.get_object('SendMessage', params, Message,
-                               queue.id, verb='POST')
+                               queue.id, verb='POST', override_timeout=0.3,
+                               override_num_retries=0)
 
     def send_message_batch(self, queue, messages):
         """
@@ -459,7 +462,8 @@ class SQSConnection(AWSQueryConnection):
         if owner_acct_id:
             params['QueueOwnerAWSAccountId']=owner_acct_id
         try:
-            return self.get_object('GetQueueUrl', params, Queue)
+            return self.get_object('GetQueueUrl', params, Queue,
+                override_timeout=2)
         except SQSError:
             return None
 
