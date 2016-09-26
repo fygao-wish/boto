@@ -980,7 +980,7 @@ class AWSAuthConnection(object):
             try:
                 response = EasyRequest.request(request.method, request.url,
                                    body=request.body, headers=request.headers,
-                                   request_timeout=2 if override_timeout is None else \
+                                   request_timeout=10 if override_timeout is None else \
                                        override_timeout)
 
                 boto.log.debug('Response headers: %s' % response.headers)

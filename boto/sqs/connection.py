@@ -94,7 +94,7 @@ class SQSConnection(AWSQueryConnection):
             params['Attribute.1.Name'] = 'VisibilityTimeout'
             params['Attribute.1.Value'] = int(visibility_timeout)
         return self.get_object('CreateQueue', params, Queue,
-             override_num_retries=0, override_timeout=0.2)
+             override_num_retries=0, override_timeout=5)
 
     def delete_queue(self, queue, force_deletion=False):
         """
@@ -161,7 +161,7 @@ class SQSConnection(AWSQueryConnection):
     def set_queue_attribute(self, queue, attribute, value):
         params = {'Attribute.Name' : attribute, 'Attribute.Value' : value}
         return self.get_status('SetQueueAttributes', params, queue.id,
-             override_num_retries=0, override_timeout=0.2)
+             override_num_retries=0, override_timeout=5)
 
     def receive_message(self, queue, number_messages=1,
                         visibility_timeout=None, attributes=None,
@@ -332,7 +332,7 @@ class SQSConnection(AWSQueryConnection):
         # don't retry, since we buffer locally
         return self.get_object('SendMessage', params, Message,
                                queue.id, verb='POST', override_num_retries=0,
-                               override_timeout=0.5)
+                               override_timeout=5)
 
     def send_message_batch(self, queue, messages):
         """
