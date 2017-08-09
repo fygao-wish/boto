@@ -981,7 +981,8 @@ class AWSAuthConnection(object):
                 response = EasyRequest.request(request.method, request.url,
                                    body=request.body, headers=request.headers,
                                    request_timeout=10 if override_timeout is None else \
-                                       override_timeout)
+                                       override_timeout,
+                                       use_curl=True)
 
                 boto.log.debug('Response headers: %s' % response.headers)
                 location = response.headers.get('Location',None)
