@@ -87,6 +87,7 @@ except ImportError:
 try:
     from cl.utils.easy_request import EasyRequest
     import tornado
+    import tornado.options
 except ImportError:
     EasyRequest = None
     tornado = None
@@ -1051,9 +1052,12 @@ class AWSAuthConnection(object):
         # its own custom sender/retry handler are S3, route53, and dynamodb
         # S3 uses a custom sender for uploading a file, which we expect to block
         # the other two services we dont use
+        # Only use the EasyRequeest if we require the client to be asynchronous
+        # as is the case when we're using the sqs_periodic_executor
         if async and EasyRequest is not None and \
             EasyRequest.supported_method(request.method) and sender is None \
-            and retry_handler is None:
+            and retry_handler is None and 'sqs_periodic_executor' in tornado.options.options and \
+            tornado.options.options.sqs_periodic_executor:
             return self._cl_mexe(request, sender=sender,
                                  override_num_retries=override_num_retries,
                                  retry_handler=retry_handler,
