@@ -332,7 +332,7 @@ class SQSConnection(AWSQueryConnection):
         # don't retry, since we buffer locally
         return self.get_object('SendMessage', params, Message,
                                queue.id, verb='POST', override_num_retries=0,
-                               override_timeout=10)
+                               override_timeout=3, async_timeout=10)
 
     def send_message_batch(self, queue, messages):
         """
@@ -463,7 +463,8 @@ class SQSConnection(AWSQueryConnection):
         if owner_acct_id:
             params['QueueOwnerAWSAccountId']=owner_acct_id
         try:
-            return self.get_object('GetQueueUrl', params, Queue)
+            return self.get_object('GetQueueUrl', params, Queue,
+                override_timeout=2)
         except SQSError:
             return None
 

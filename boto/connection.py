@@ -587,7 +587,7 @@ class AWSAuthConnection(object):
             # Very few things will use this default behavior, but to be safe we can lower
             # it to 10
             self.http_connection_kwargs['timeout'] = config.getint(
-                'Boto', 'http_socket_timeout', 10)
+                'Boto', 'http_socket_timeout', 5)
 
         if isinstance(provider, Provider):
             # Allow overriding Provider
@@ -743,12 +743,16 @@ class AWSAuthConnection(object):
         self.no_proxy = os.environ.get('no_proxy', '') or os.environ.get('NO_PROXY', '')
         self.use_proxy = (self.proxy is not None)
 
-    def get_http_connection(self, host, port, is_secure):
+    def get_http_connection(self, host, port, is_secure, override_timeout=None):
         conn = self._pool.get_http_connection(host, port, is_secure)
         if conn is not None:
-            return conn
+            if override_timeout is not None and conn.timeout == override_timeout:
+                return conn
+            return self.new_http_connection(host, port, is_secure,
+                override_timeout=override_timeout)
         else:
-            return self.new_http_connection(host, port, is_secure)
+            return self.new_http_connection(host, port, is_secure,
+                override_timeout=override_timeout)
 
     def skip_proxy(self, host):
         if not self.no_proxy:
@@ -766,7 +770,7 @@ class AWSAuthConnection(object):
 
         return False
 
-    def new_http_connection(self, host, port, is_secure):
+    def new_http_connection(self, host, port, is_secure, override_timeout=None):
         if host is None:
             host = self.server_name()
 
@@ -775,6 +779,8 @@ class AWSAuthConnection(object):
         host = host.split(':', 1)[0]
 
         http_connection_kwargs = self.http_connection_kwargs.copy()
+        if override_timeout is not None:
+            http_connection_kwargs['timeout'] = override_timeout
 
         # Connection factories below expect a port keyword argument
         http_connection_kwargs['port'] = port
@@ -1037,7 +1043,8 @@ class AWSAuthConnection(object):
             raise BotoClientError(msg)
 
     def _mexe(self, request, sender=None, override_num_retries=None,
-              retry_handler=None, async=True, override_timeout=None):
+              retry_handler=None, async=True, override_timeout=None,
+              async_timeout=None):
         """
         mexe - Multi-execute inside a loop, retrying multiple times to handle
                transient Internet errors by simply trying again.
@@ -1061,7 +1068,7 @@ class AWSAuthConnection(object):
             return self._cl_mexe(request, sender=sender,
                                  override_num_retries=override_num_retries,
                                  retry_handler=retry_handler,
-                                 override_timeout=override_timeout)
+                                 override_timeout=async_timeout if async_timeout else override_timeout)
 
         boto.log.debug('Method: %s' % request.method)
         boto.log.debug('Path: %s' % request.path)
@@ -1079,7 +1086,8 @@ class AWSAuthConnection(object):
             num_retries = override_num_retries
         i = 0
         connection = self.get_http_connection(request.host, request.port,
-                                              self.is_secure)
+                                              self.is_secure,
+                                              override_timeout=override_timeout)
 
         # Convert body to bytes if needed
         if not isinstance(request.body, bytes) and hasattr(request.body,
@@ -1162,9 +1170,11 @@ class AWSAuthConnection(object):
                     msg = 'Redirecting: %s' % scheme + '://'
                     msg += request.host + request.path
                     boto.log.debug(msg)
-                    connection = self.get_http_connection(request.host,
-                                                          request.port,
-                                                          scheme == 'https')
+                    connection = self.get_http_connection(
+                        request.host,
+                        request.port,
+                        scheme == 'https',
+                        override_timeout=override_timeout)
                     response = None
                     continue
             except PleaseRetryException as e:
@@ -1275,7 +1285,7 @@ class AWSQueryConnection(AWSAuthConnection):
         return boto.utils.get_utf8_value(value)
 
     def make_request(self, action, params=None, path='/', verb='GET',
-            override_num_retries=None, override_timeout=None):
+            override_num_retries=None, override_timeout=None, async_timeout=None):
         http_request = self.build_base_http_request(verb, path, None,
                                                     params, {}, '',
                                                     self.host)
@@ -1285,7 +1295,8 @@ class AWSQueryConnection(AWSAuthConnection):
             http_request.params['Version'] = self.APIVersion
         return self._mexe(http_request,
             override_num_retries=override_num_retries,
-            override_timeout=override_timeout)
+            override_timeout=override_timeout,
+            async_timeout=async_timeout)
 
     def build_list_params(self, params, items, label):
         if isinstance(items, six.string_types):
@@ -1360,12 +1371,13 @@ class AWSQueryConnection(AWSAuthConnection):
 
     def get_object(self, action, params, cls, path='/',
                    parent=None, verb='GET',override_num_retries=None,
-                   override_timeout=None):
+                   override_timeout=None, async_timeout=None):
         if not parent:
             parent = self
         response = self.make_request(action, params, path, verb,
             override_num_retries=override_num_retries,
-            override_timeout=override_timeout)
+            override_timeout=override_timeout,
+            async_timeout=async_timeout)
         body = response.read()
         boto.log.debug(body)
         if not body:
