@@ -1063,8 +1063,9 @@ class AWSAuthConnection(object):
         # as is the case when we're using the sqs_periodic_executor
         if async and EasyRequest is not None and \
             EasyRequest.supported_method(request.method) and sender is None \
-            and retry_handler is None and 'sqs_periodic_executor' in tornado.options.options and \
-            tornado.options.options.sqs_periodic_executor:
+            and retry_handler is None and (('sqs_periodic_executor' in tornado.options.options and \
+            tornado.options.options.sqs_periodic_executor) or ('async_cloudwatch' in tornado.options.options and \
+            tornado.options.options.async_cloudwatch)):
             return self._cl_mexe(request, sender=sender,
                                  override_num_retries=override_num_retries,
                                  retry_handler=retry_handler,
