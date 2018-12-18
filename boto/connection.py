@@ -254,7 +254,8 @@ class ConnectionPool(object):
         """
         return sum(pool.size() for pool in self.host_to_pool.values())
 
-    def get_http_connection(self, host, port, is_secure):
+    def get_http_connection(self, host, port, is_secure,
+            override_timeout=None):
         """
         Gets a connection from the pool for the named host.  Returns
         None if there is no connection that can be reused. It's the caller's
@@ -263,18 +264,19 @@ class ConnectionPool(object):
         """
         self.clean()
         with self.mutex:
-            key = (host, port, is_secure)
+            key = (host, port, is_secure, override_timeout)
             if key not in self.host_to_pool:
                 return None
             return self.host_to_pool[key].get()
 
-    def put_http_connection(self, host, port, is_secure, conn):
+    def put_http_connection(self, host, port, is_secure, conn,
+            override_timeout=None):
         """
         Adds a connection to the pool of connections that can be
         reused for the named host.
         """
         with self.mutex:
-            key = (host, port, is_secure)
+            key = (host, port, is_secure, override_timeout)
             if key not in self.host_to_pool:
                 self.host_to_pool[key] = HostConnectionPool()
             self.host_to_pool[key].put(conn)
@@ -698,12 +700,10 @@ class AWSAuthConnection(object):
         self.use_proxy = (self.proxy is not None)
 
     def get_http_connection(self, host, port, is_secure, override_timeout=None):
-        conn = self._pool.get_http_connection(host, port, is_secure)
-        if conn is not None:
-            if override_timeout is not None and conn.timeout == override_timeout:
-                return conn
-            return self.new_http_connection(host, port, is_secure,
+        conn = self._pool.get_http_connection(host, port, is_secure,
                 override_timeout=override_timeout)
+        if conn is not None:
+            return conn
         else:
             return self.new_http_connection(host, port, is_secure,
                 override_timeout=override_timeout)
@@ -783,8 +783,10 @@ class AWSAuthConnection(object):
         connection.response_class = HTTPResponse
         return connection
 
-    def put_http_connection(self, host, port, is_secure, connection):
-        self._pool.put_http_connection(host, port, is_secure, connection)
+    def put_http_connection(self, host, port, is_secure, connection,
+            override_timeout=None):
+        self._pool.put_http_connection(host, port, is_secure, connection,
+                override_timeout=override_timeout)
 
     def proxy_ssl(self, host=None, port=None):
         if host and port:
@@ -984,7 +986,8 @@ class AWSAuthConnection(object):
                         connection.close()
                     else:
                         self.put_http_connection(request.host, request.port,
-                                                 self.is_secure, connection)
+                                                 self.is_secure, connection,
+                                                 override_timeout=override_timeout)
                     if self.request_hook is not None:
                         self.request_hook.handle_request_data(request, response)
                     return response
