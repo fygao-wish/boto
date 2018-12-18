@@ -20,7 +20,7 @@ upload_egg:
     # update version to put custom ContextLogic version
     - version_origin=$(sed -n "/.*\(__version__\).*=.*\'.*/p" boto/__init__.py | sed 's/^.*[^0-9]\([0-9]*\.[0-9]*\.[0-9]*\).*$/\1/')
     - version_cl="$version_origin+cl$CI_PIPELINE_ID"
-    - sed -i "s/$version_origin/$version_cl/g" setup.py
+    - sed -i "s/$version_origin/$version_cl/g" boto/__init__.py
     - pip install .
     - pip show $CI_PROJECT_NAME
 
