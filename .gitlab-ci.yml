@@ -28,7 +28,7 @@ upload_egg:
 
     # Install
     - pip install .
-    - pip show $name_cl
+    - pip show $name_origin-$BRANCH_NAME
 
 
   #   # Upload to Wish Pypi
