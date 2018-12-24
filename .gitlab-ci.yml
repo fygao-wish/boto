@@ -1,3 +1,6 @@
+variables:
+  BRANCH_NAME: cl_2.38
+
 image: ubuntu:14.04
   
 upload_egg:
@@ -18,14 +21,20 @@ upload_egg:
     - version_origin=$(sed -n "/.*\(__version__\).*=.*\'.*/p" boto/__init__.py | sed 's/^.*[^0-9]\([0-9]*\.[0-9]*\.[0-9]*\).*$/\1/')
     - version_cl="$version_origin+cl$CI_PIPELINE_ID"
     - sed -i "s/$version_origin/$version_cl/g" boto/__init__.py
+    # update name to put the branch name in it
+    - name_origin=$(sed -n '/.*\(name\).*=.*\".*/p' setup.py | sed '/.*\"\(.*\)\".*/ s//\1/g')
+    - name_cl="name=\"$name_origin-$BRANCH_NAME\""
+    - sed -i "s/name.*=.*\"boto\"/$name_cl/g" setup.py
+
+    # Install
     - pip install .
-    - pip show $CI_PROJECT_NAME
+    - pip show pymongo-green
 
-    # Upload to Wish Pypi
-    - devpi use $PYPI_SERVER
-    - devpi login $USERNAME --password=$PASSWORD
-    - devpi use $INDEX
-    - devpi upload
-  only:
-    - master
 
+  #   # Upload to Wish Pypi
+  #   - devpi use $PYPI_SERVER
+  #   - devpi login $USERNAME --password=$PASSWORD
+  #   - devpi use $INDEX
+  #   - devpi upload
+  # only:
+  #   - $BRANCH_NAME
