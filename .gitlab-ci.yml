@@ -15,7 +15,7 @@ upload_egg:
     - pip install pyOpenSSL ndg-httpsclient pyasn1
     - pip install -U devpi-client
 
-    # make sure there's only 1 "__version__=" line in the setup.py file
+    # make sure there's only 1 "__version__=" line in the boto/__init__.py file
     - (if [ "$(sed -n "/.*\(__version__\).*=.*\'.*/p" boto/__init__.py | sed 's/^.*[^0-9]\([0-9]*\.[0-9]*\.[0-9]*\).*$/\1/' | wc -l)" == "1" ]; then echo "Found the version number"; else echo "Fail"; exit 33; fi);
     # update version to put custom ContextLogic version
     - version_origin=$(sed -n "/.*\(__version__\).*=.*\'.*/p" boto/__init__.py | sed 's/^.*[^0-9]\([0-9]*\.[0-9]*\.[0-9]*\).*$/\1/')
@@ -28,7 +28,7 @@ upload_egg:
 
     # Install
     - pip install .
-    - pip show pymongo-green
+    - pip show $name_cl
 
 
   #   # Upload to Wish Pypi
