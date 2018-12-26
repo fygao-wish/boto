@@ -2,8 +2,12 @@ variables:
   BRANCH_NAME: cl_2.38
 
 image: ubuntu:14.04
-  
+
+stages:
+  - upload-egg
+
 upload_egg:
+  stage: upload-egg
   script:
     # add git as part of the egg upload
     - apt-get update -y && apt-get install -y git
