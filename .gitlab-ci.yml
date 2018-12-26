@@ -36,4 +36,4 @@ upload_egg:
     - devpi use $INDEX
     - devpi upload
   only:
-    - $BRANCH_NAME
+    - cl_sync_2.38
