@@ -1,6 +1,3 @@
-variables:
-  BRANCH_NAME: cl_sync_2.38
-
 image: ubuntu:14.04
 
 upload_egg:
@@ -13,7 +10,7 @@ upload_egg:
     - curl "https://bootstrap.pypa.io/get-pip.py" -o "get-pip.py"
     - python get-pip.py
     - pip install pyOpenSSL ndg-httpsclient pyasn1
-    - pip install -U devpi-client
+    - pip install -U pypicloud[server] 
 
     # make sure there's only 1 "__version__=" line in the boto/__init__.py file
     - (if [ "$(sed -n "/.*\(__version__\).*=.*\'.*/p" boto/__init__.py | sed 's/^.*[^0-9]\([0-9]*\.[0-9]*\.[0-9]*\).*$/\1/' | wc -l)" == "1" ]; then echo "Found the version number"; else echo "Fail"; exit 33; fi);
@@ -31,9 +28,10 @@ upload_egg:
     - pip show $name_origin-$BRANCH_NAME
 
     # Upload to Wish Pypi
-    - devpi use $PYPI_SERVER
-    - devpi login $USERNAME --password=$PASSWORD
-    - devpi use $INDEX
-    - devpi upload
-  only:
-    - cl_sync_2.38
+    - cat .pypirc
+    #- devpi use $PYPI_SERVER
+    #- devpi login $USERNAME --password=$PASSWORD
+    #- devpi use $INDEX
+    #- devpi upload
+  #only:
+   # - cl_sync_2.38
