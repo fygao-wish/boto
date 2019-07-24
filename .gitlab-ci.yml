@@ -20,14 +20,10 @@ upload_egg:
     - version_origin=$(sed -n "/.*\(__version__\).*=.*\'.*/p" boto/__init__.py | sed 's/^.*[^0-9]\([0-9]*\.[0-9]*\.[0-9]*\).*$/\1/')
     - version_cl="$version_origin+cl$CI_PIPELINE_ID"
     - sed -i "s/$version_origin/$version_cl/g" boto/__init__.py
-    # update name to put the branch name in it
-    - name_origin=$(sed -n '/.*\(name\).*=.*\".*/p' setup.py | sed '/.*\"\(.*\)\".*/ s//\1/g')
-    - name_cl="name=\"$name_origin-$BRANCH_NAME\""
-    - sed -i "s/name.*=.*\"boto\"/$name_cl/g" setup.py
 
     # Install
     - pip install .
-    - pip show $name_origin-$BRANCH_NAME
+    - pip show $CI_PROJECT_NAME
 
     # Upload to pypicloud
     - pip install twine
