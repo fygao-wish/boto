@@ -440,16 +440,44 @@ class CLHTTPResponse(object):
     def __init__(self, response):
         self._cache_response = ''
         self._response = response
+        self.response_read = False
 
+    # Boto sometimes gets a response in parts, e.g for s3 but
+    # easyrequest gets the full response in one request so to
+    # avoid infinite loops when the code expects parts instead of the
+    # full response, return None if we have already read the response
     def read(self, amt=None):
-        return self._response.body
+        if not self.response_read:
+            self.response_read = True
+            return self._response.body
+        else:
+            return None
+
+    @property
+    def msg(self):
+        return self
+
+    def items(self):
+        return self._response.headers.items()
+
+    def keys(self):
+        return self._response.headers.keys()
+
+    def __contains__(self, key):
+        return key in self._response.headers
+
+    def __getitem__(self, key):
+        return self._response.headers[key]
 
     @property
     def status(self):
         return self._response.code
 
-    def getheader(self, header):
-        return self._response.headers.get(header)
+    def getheader(self, header, default=None):
+        return self._response.headers.get(header, default)
+
+    def getheaders(self):
+        return self._response.headers.items()
 
     @property
     def reason(self):
