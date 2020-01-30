@@ -643,7 +643,7 @@ class S3Connection(AWSAuthConnection):
 
     def make_request(self, method, bucket='', key='', headers=None, data='',
                      query_args=None, sender=None, override_num_retries=None,
-                     retry_handler=None, async=False):
+                     retry_handler=None, async=True):
         if isinstance(bucket, self.bucket_class):
             bucket = bucket.name
         if isinstance(key, Key):
@@ -663,5 +663,5 @@ class S3Connection(AWSAuthConnection):
             data, host, auth_path, sender,
             override_num_retries=override_num_retries,
             retry_handler=retry_handler,
-            async=False
+            async=async
         )
