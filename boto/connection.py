@@ -989,6 +989,20 @@ class AWSAuthConnection(object):
             num_retries = override_num_retries
         i = 0
 
+        # Our tornado client will use curl to perform the http request
+        # and libcurl will automatically attach the Content-Type header and set
+        # it to application/x-www-form-urlencoded" according to the docs
+        # https://curl.haxx.se/libcurl/c/CURLOPT_POST.html
+        # This causes issues because when we sign the request below
+        # we do so before this header is attached. This will trigger
+        # signature mismatch errors from s3 because s3 will try
+        # to calculate the signature with this header included.
+        # By defaulting the header to empty string, we prevent curl
+        # from setting by default. Regular boto http library doesn't
+        # have this issue because httplib doesn't attach this header automatically
+        if request.method == "POST":
+            request.headers['Content-Type'] = ''
+
         # Convert body to bytes if needed
         if not isinstance(request.body, bytes) and hasattr(request.body,
                                                            'encode'):
