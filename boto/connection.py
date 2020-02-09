@@ -1000,7 +1000,7 @@ class AWSAuthConnection(object):
         # By defaulting the header to empty string, we prevent curl
         # from setting by default. Regular boto http library doesn't
         # have this issue because httplib doesn't attach this header automatically
-        if request.method == "POST":
+        if request.method == "POST" and not request.headers.get('Content-Type'):
             request.headers['Content-Type'] = ''
 
         # Convert body to bytes if needed
