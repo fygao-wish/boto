@@ -85,7 +85,7 @@ except ImportError:
     import dummy_threading as threading
 
 try:
-    from cl.utils.easy_request import EasyRequest
+    from wishwms.cl_utils.easy_request import EasyRequest
     import tornado
     import tornado.options
 except ImportError:
@@ -94,7 +94,7 @@ except ImportError:
     print "Warning: easy_request not found, using default Boto behavior"
 
 try:
-    from cl.utils.tornadoutil.async import async_sleep
+    from wishwms.cl_utils.tornadoutil.async_ import async_sleep
 except ImportError:
     async_sleep = None
     print "Warning: async_sleep not found, will not retry on status code > 500"
