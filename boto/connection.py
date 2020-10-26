@@ -42,6 +42,7 @@
 """
 Handles basic connections to AWS
 """
+from __future__ import print_function
 from datetime import datetime
 import errno
 import os
@@ -91,13 +92,13 @@ try:
 except ImportError:
     EasyRequest = None
     tornado = None
-    print "Warning: easy_request not found, using default Boto behavior"
+    print("Warning: easy_request not found, using default Boto behavior")
 
 try:
     from wishwms.cl_utils.tornadoutil.async_ import async_sleep
 except ImportError:
     async_sleep = None
-    print "Warning: async_sleep not found, will not retry on status code > 500"
+    print("Warning: async_sleep not found, will not retry on status code > 500")
 
 ON_APP_ENGINE = all(key in os.environ for key in (
     'USER_IS_ADMIN', 'CURRENT_VERSION_ID', 'APPLICATION_ID'))
