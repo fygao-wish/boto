@@ -46,7 +46,7 @@ def readme():
         return f.read()
 
 setup(name = "boto",
-      version = "wishwms-0.2",
+      version = "wishwms_0.1",
       description = "Amazon Web Services Library",
       long_description = readme(),
       package_maintainer="chn-infra@wish.com",
